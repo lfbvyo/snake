@@ -1,16 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, createRef } from "react";
 
 const Matrix = ({ rows = 30, cols = 30 }) => {
-  /*
-   *   Matrix
-   *   empty = 0
-   *   snake = 5
-   *   food = 1
-   *   head = 2
-   */
-  const [matrix, setMatrix] = useState([]);
-  const [food, setFood] = useState([5, 5]);
-  const [snake, setSnake] = useState({
+  const defaultClass =
+    "inline-block bg-green-700 w-[20px] h-[20px] leading-none";
+  const refFood = useRef([5, 5]);
+  const refDirection = useRef(0);
+  const refIntervalId = useRef(null);
+
+  const refSnake = useRef({
     head: [15, 15],
     body: [
       [15, 14],
@@ -19,90 +16,107 @@ const Matrix = ({ rows = 30, cols = 30 }) => {
     ],
   });
 
-  const renderCol = (val) => {
-    switch (val) {
-      case 0:
-        return "";
-      case 5:
-        return "bg-blue-300";
-      case 1:
-        return "bg-red-600 animate-ping ";
-      case 2:
-        return "bg-white";
-      default:
-        return "";
-    }
+  const classDictionary = {
+    empty: "",
+    snake: " bg-blue-300 ",
+    food: " bg-red-600 ",
+    head: " bg-white ",
+  };
+
+  const refMatrix = useRef(
+    [...Array(rows)].map(() => [...Array(cols)].map(() => createRef()))
+  );
+
+  const renderCol = (itemRef, className) => {
+    itemRef.current.className = `${defaultClass} ${className}`;
   };
 
   useEffect(() => {
-    const initialMatrix = clearMatrix();
-    setMatrix(initialMatrix);
-    paintSnake(initialMatrix);
+    paint();
   }, [cols, rows]);
 
-  //   useEffect(() => {
-  //     window.addEventListener("keyup", onKeyUp);
-  //     return document.removeEventListener("keyup", onKeyUp);
-  //   }, []);
+  useEffect(() => {
+    window.addEventListener("keyup", onKeyUp);
+    refIntervalId.current = setInterval(() => {
+      onKeyUp(undefined, refDirection.current);
+    }, 250);
+    return () => {
+      document.removeEventListener("keyup", onKeyUp);
+      clearInterval(refIntervalId.current);
+    };
+  }, []);
 
-  const paintSnake = () => {
-    const newMatrix = clearMatrix();
-    const { head, body } = snake;
-    newMatrix[head[0]][head[1]] = 2;
-    for (let i = 0; i < body.length; i++) {
-      newMatrix[body[i][0]][body[i][1]] = 5;
-    }
-    setMatrix(newMatrix);
+  const paint = (clear = false) => {
+    const { head, body } = refSnake.current;
+    renderCol(
+      refMatrix.current[head[0]][head[1]],
+      clear ? classDictionary.empty : classDictionary.head
+    );
+    body.forEach((bodyItem) => {
+      renderCol(
+        refMatrix.current[bodyItem[0]][bodyItem[1]],
+        clear ? classDictionary.empty : classDictionary.snake
+      );
+    });
+    renderCol(
+      refMatrix.current[refFood.current[0]][refFood.current[1]],
+      clear ? classDictionary.empty : classDictionary.food
+    );
   };
 
-  const clearMatrix = () => {
-    const initialMatrix = [];
-    for (let i = 0; i < rows; i++) {
-      const row = [];
-      for (let j = 0; j < cols; j++) {
-        row.push(0);
-      }
-      initialMatrix.push(row);
+  const onKeyUp = (e, keyCode) => {
+    if (
+      e?.keyCode &&
+      e.keyCode !== 37 &&
+      e.keyCode !== 38 &&
+      e.keyCode !== 39 &&
+      e.keyCode !== 40
+    ) {
+      return;
     }
-    initialMatrix[food[0]][food[1]] = 1;
-    return initialMatrix;
-  };
 
-  const onKeyUp = (e) => {
-    console.log("keyup", e.keyCode);
-    const { head, body } = snake;
+    const { head, body } = refSnake.current;
     const newBody = [head];
     let newHead;
-    if (!e.keyCode || !head) return;
+    const direction = e?.keyCode || keyCode;
 
-    if (e.keyCode === 38) {
+    if ((!e?.keyCode && !keyCode) || !head) return;
+    if (direction !== 0) paint(true);
+    if (direction === 38) {
       // up
       newHead = [head[0] - 1, head[1]];
+      refDirection.current = 38;
     }
-    if (e.keyCode === 37) {
+    if (direction === 37) {
       // left
       newHead = [head[0], head[1] - 1];
+      refDirection.current = 37;
     }
-    if (e.keyCode === 39) {
+    if (direction === 39) {
       // right
       newHead = [head[0], head[1] + 1];
+      refDirection.current = 39;
     }
-    if (e.keyCode === 40) {
+    if (direction === 40) {
       // down
       newHead = [head[0] + 1, head[1]];
+      refDirection.current = 40;
     }
     let didIEatFood = false;
-    if (newHead[0] === food[0] && newHead[1] === food[1]) {
-      setFood([
+    if (
+      newHead[0] === refFood.current[0] &&
+      newHead[1] === refFood.current[1]
+    ) {
+      refFood.current = [
         Math.floor(Math.random() * rows),
         Math.floor(Math.random() * cols),
-      ]);
+      ];
       didIEatFood = true;
     }
     const maxBody = didIEatFood ? body.length : body.length - 1;
     // paint body
     for (let i = 0; i < maxBody; i++) {
-      newBody.push([[body[i][0]], [body[i][1]]]);
+      newBody.push([body[i][0], body[i][1]]);
     }
 
     if (
@@ -112,35 +126,32 @@ const Matrix = ({ rows = 30, cols = 30 }) => {
       newHead[1] > cols - 1
     ) {
       alert("Game Over");
+      clearInterval(refIntervalId.current);
       return;
     }
 
     body?.forEach((bodyItem) => {
       if (bodyItem[0] === newHead[0] && bodyItem[1] === newHead[1]) {
         alert("Game Over");
+        clearInterval(refIntervalId.current);
         return;
       }
     });
-    setSnake({
+    refSnake.current = {
       head: newHead,
       body: newBody,
-    });
-    paintSnake(matrix);
+    };
+
+    paint();
   };
 
   return (
-    <div className="text-center p-32">
-      <input onKeyUp={onKeyUp} />
+    <div className="p-32 text-center">
       <div className="inline-block leading-none">
-        {matrix.map((row, i) => (
+        {refMatrix.current.map((row, i) => (
           <div className={`w-[600px] leading-none h-[20px]`} key={i}>
             {row.map((col, j) => (
-              <div
-                key={j}
-                className={`inline-block bg-green-700 w-[20px] h-[20px] leading-none ${renderCol(
-                  matrix[i][j]
-                )}`}
-              ></div>
+              <div key={j} ref={col} className={defaultClass}></div>
             ))}
           </div>
         ))}
